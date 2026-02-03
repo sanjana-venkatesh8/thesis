@@ -32,12 +32,10 @@ Tmax     = 200;  % max time (hours)
 num_reps = 20;
 
 %% GILLESPIE SIMULATION
-% TODO: track the number of E- and C-cells
-% TODO: for mutating cheater cells, s sample gets added onto old s
 
-all_traj = cell(num_reps, 1); % DEBUG
+all_traj = cell(num_reps, 1); 
 
-figure; hold on;
+figure; hold on; % DEBUG
 
 for rep = 1:num_reps
     tic
@@ -76,12 +74,12 @@ for rep = 1:num_reps
         a_death(isE) = d_E;
         a_death(isC) = d_C;
 
-        % TODO: LOOK AT THIS CAREFULLY
+        % TODO: LOOK AT THIS CAREFULLY !!!
         a_mut = zeros(N, 1);
         % a_mut(isC) = mu * n_E; % both of these get added to C
         % a_mut(isC) = a_mut(isC) + mu * n_C;
-        a_mut(isC) = mu; % both of these get added to C
-        a_mut(isC) = a_mut(isC) + mu;
+        a_mut(isE) = mu; % both of these get added to C
+        a_mut(isC) = mu;
 
         a_i = a_div + a_death + a_mut;
         a0 = sum(a_i);
@@ -116,7 +114,7 @@ for rep = 1:num_reps
             % Add offspring
             B(end+1,1) = offB;
             s(end+1,1) = offS;
-        elseif i > a_div(idx) / a_i(idx) && i < (a_div(idx) + a_death(idx)) / a_i(idx)
+        elseif i < (a_div(idx) + a_death(idx)) / a_i(idx)
             % Death event
             B(idx,:) = [];
             s(idx,:) = [];
