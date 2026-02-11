@@ -6,14 +6,14 @@ E0 = 1200;
 K    = E0;      % tune as needed
 
 % Base division rates
-g_E  = 0.3;      % engineered (burdened)
-g_C  = 1.0;      % cheater (relieved burden, fitter)
+g_E  = 0.3;     % (h^-1) engineered (burdened)
+g_C  = 1.0;     % (h^-1) cheater (relieved burden, fitter)
 
 % Death rates
-d_E  = 0.02;
-d_C  = 0.02;
+d_E  = 0.02;    % (h^-1)
+d_C  = 0.02;    % (h^-1)
 
-% Mutation probability - for simplicity, this is the same for E and C cells
+% Mutation *probability* - for simplicity, this is the same for E and C cells
 % TODO: time-evolving mutation rate (for control strain only)
 mu = 5e-5;
 
@@ -23,13 +23,13 @@ f_b = 0.5;   f_n = 0.2;  f_d = 0.3;
 lambda_b = 1.5;   % larger mean beneficial effect (1/lambda)
 lambda_d = 8;
 
-% Cheater: closer to optimum, beneficials rarer/weaker
-f_b_C = 0.01;  f_n_C = 0.39; f_d_C = 0.60;
-lambda_b_C = 10;
-lambda_d_C = 10;
+% RESOURCE LIMITATIONS
+R0   = 0.5;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
+k_R  = 5e-6;     % resource use per cell per hour (tune)
 
+% TIME/REP PARAMETERS
 Tmax     = 200;  % max time (hours)
-num_reps = 20;
+num_reps = 10;
 
 %% GILLESPIE SIMULATION
 
@@ -43,6 +43,7 @@ for rep = 1:num_reps
     t  = 0;
     B  = repmat('E', E0, 1);  % tracks individual cells; 'E' = engineered, 'C' = cheater
     s  = zeros(E0, 1);        % fitness modifiers for each cell (relative to g_E or g_C)
+    R  = R0;                % tracks leftover resource amount (PDC1)
 
     T_traj = t;
     N_traj = E0; % initial population size = all engineered cells
@@ -60,12 +61,15 @@ for rep = 1:num_reps
         K_eff  = K * (1 + alpha * mean_s); % set K_eff based on avg fitness
         logistic = max(0, 1 - N / K_eff);
 
+        % resource limitation
+        resource_factor = 0.05 * R / (R0 + R);    % saturating, ~1 when R≈R0, ~0 when R→0
+
         % Division, death, mutation propensities for each cell
         a_div = zeros(N, 1);
         % a_div(isE) = g_E * n_E * (1 + s(isE)) * logistic;
         % a_div(isC) = g_C * n_C * (1 + s(isC)) * logistic;
-        a_div(isE) = g_E * (1 + s(isE)) * logistic;
-        a_div(isC) = g_C * (1 + s(isC)) * logistic;
+        a_div(isE) = g_E * logistic + resource_factor;
+        a_div(isC) = g_C * (1 + s(isC)) * logistic + resource_factor;
 
 
         a_death = zeros(N, 1);
@@ -95,6 +99,9 @@ for rep = 1:num_reps
         if t > Tmax
             break;
         end
+
+        % Resource limitation
+        R = max(0, R - k_R * N * tau);   % continuous depletion
 
         % Pick cell
         u2 = rand * a0;
@@ -152,7 +159,7 @@ for rep = 1:num_reps
     fprintf("Rep %d completed in ", rep);
     toc
 
-    figure(1); scatter(rep, numel(B(isC))) % DEBUG
+    figure(1); scatter(rep, numel(B(isC)), 'filled') % DEBUG
 end
 
 %% Plot total population trajectories
@@ -164,5 +171,5 @@ for rep = 1:num_reps
 end
 xlabel('Time (hours)');
 ylabel('Total population size');
-title('SSA trajectories: engineered-only start, cheaters emerge over time');
+title('Cell count vs. time');
 grid on;
