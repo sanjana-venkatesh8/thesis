@@ -24,7 +24,7 @@ lambda_b = 1.5;   % larger mean beneficial effect (1/lambda)
 lambda_d = 8;
 
 % RESOURCE LIMITATIONS
-R0   = 0.5;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
+R0   = 0.4;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
 k_R  = 5e-6;     % resource use per cell per hour (tune)
 
 % TIME/REP PARAMETERS
@@ -47,6 +47,9 @@ for rep = 1:num_reps
 
     T_traj = t;
     N_traj = E0; % initial population size = all engineered cells
+    s_traj = mean(s);
+    s_mut_traj = mean(s);
+    s_reg_traj = mean(s);
 
     while t < Tmax && numel(B) > 0
         isE = (B == 'E');
@@ -150,11 +153,13 @@ for rep = 1:num_reps
         % Record trajectory
         T_traj(end+1, 1) = t; %#ok<AGROW>
         N_traj(end+1, 1) = numel(B);
-
+        s_traj(end+1, 1) = mean_s;
+        s_mut_traj(end+1, 1) = mean(s(B == 'C'));
+        s_reg_traj(end+1, 1) = mean(s(B == 'E'));
 
     end
 
-    all_traj{rep} = struct('t', T_traj, 'N', N_traj);
+    all_traj{rep} = struct('t', T_traj, 'N', N_traj, 's', s_traj, 's_reg', s_reg_traj, 's_mut', s_mut_traj);
     
     fprintf("Rep %d completed in ", rep);
     toc
@@ -163,13 +168,31 @@ for rep = 1:num_reps
 end
 
 %% Plot total population trajectories
-figure; hold on;
+figure(2); hold on;
+figure(3); hold on; % DEBUG: plot avg fitness v time
+figure(4); hold on; % DEBUG: plot avg mutant fitness v time
+figure(6); hold on; % plot ln(pop. size) v time
 cols = lines(num_reps);
 for rep = 1:num_reps
     tr = all_traj{rep};
-    plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3);
+    figure(2); plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3);
+    figure(3); plot(tr.t, tr.s, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg fitness v time
+    figure(4); plot(tr.t, tr.s_mut, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg mutant fitness v time
+    figure(5); plot(tr.t, tr.s_reg, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg eng fitness v time
+    figure(6); plot(tr.t, log(tr.N), 'Color', cols(rep,:), 'LineWidth', 1.3);
 end
+figure(2); 
 xlabel('Time (hours)');
 ylabel('Total population size');
 title('Cell count vs. time');
 grid on;
+
+figure(3); 
+xlabel('Time (hours)');
+ylabel('Average population fitness');
+title('Average population fitness vs. time');
+grid on;
+
+figure(4); title("Average mutant fitness")
+figure(5); title("Average eng fitness")
+figure(6); title("ln(population size) vs. time")
