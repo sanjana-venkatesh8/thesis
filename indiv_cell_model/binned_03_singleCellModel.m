@@ -11,35 +11,34 @@
 E0 = 1200;
 
 % Carrying capacity (for batch culture of only E cells)
-K    = 100;      % tune as needed
+K    = E0;      % tune as needed
 
-% Base division rates
-g_E  = 0.3;     % (h^-1) engineered (burdened)
-g_C  = 1.0;     % (h^-1) cheater (relieved burden, fitter)
+% Wildtype (max fitness) division rates
+% TODO: think: can division rate exceed wt?
+r_growth  = 0.7;     % (h^-1) engineered (burdened)
 
-% Death rate
-r_death  = 0.03;    % (h^-1)
+% Death rates
+r_death  = 0.02;    % (h^-1)
 
 % Mutation *probability* - for simplicity, this is the same for E and C cells
 % TODO: time-evolving mutation rate (for control strain only)
-r_mutation = 0.04;
+mu = 5e-5;
 
 % DFE parameters
 % Engineered: many beneficial mutations (loss of function / lower burden)
-f_b = 0.5;   f_n = 0.2;  f_d = 0.3;
+f_b = 0.5;   f_n = 0.3;  f_d = 0.2;
 lambda_b = 1.5;   % larger mean beneficial effect (1/lambda)
 lambda_d = 8;
 
+% RESOURCE LIMITATIONS
+R0   = 0.5;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
+k_R  = 5e-6;     % resource use per cell per hour (tune)
+
 % TIME/REP PARAMETERS
 Tmax     = 200;  % max time (hours)
-num_reps = 100;
-
-%% PLOT DFE
-% TODO
+num_reps = 10;
 
 %% GILLESPIE SIMULATION
-
-n_mutation_classes = 5;
 
 all_traj = cell(num_reps, 1); 
 
@@ -49,29 +48,56 @@ for rep = 1:num_reps
     tic
     
     t  = 0;
-    counts = zeros(n_mutation_classes, 1);  % tracks # of cells in each mutation class
-    counts(1) = E0;                         % the first mutation class is the engineered class
-    mean_s  = zeros(n_mutation_classes, 1); % average fitness per class
-
-    % TODO: assign some random s
-    mean_s(1) = 0.3;
+    B  = repmat('E', E0, 1);  % tracks individual cells; 'E' = engineered, 'C' = cheater
+    s  = zeros(E0, 1);        % fitness modifiers for each cell (relative to g_E or g_C)
+    R  = R0;                % tracks leftover resource amount (PDC1)
 
     T_traj = t;
     N_traj = E0; % initial population size = all engineered cells
+    K_eff_traj = K;
+    s_traj = mean(s);
+    s_mut_traj = mean(s);
+    s_reg_traj = mean(s);
 
-    while t < Tmax && sum(counts) > 0
-        N = sum(counts);
+    while t < Tmax && numel(B) > 0
+        isE = (B == 'E');
+        isC = ~isE;
 
-        alpha  = 0.1;
-        K_eff  = K * (1 + alpha*mean_s); % set K_eff based on avg fitness
+        N = numel(B);
+        n_E = numel(B(isE));
+        n_C = numel(B(isC));
+
+        alpha  = 0.7;
+        mean_s = mean(s); % avg fitness of population
+        K_eff  = K * (1 + alpha * mean_s); % set K_eff based on avg fitness
         logistic = max(0, 1 - N / K_eff);
 
-        % Average division, death, mutation propensities for each mutation class
-        a_div = mean_s .* logistic.'; % dimensions wrong
-        a_death = ones(n_mutation_classes, 1) .* r_death;
-        a_mut = ones(n_mutation_classes, 1) .* r_mutation;
-        a_i = a_div + a_death + a_mut;
+        % resource limitation
+        % resource_factor = 0;
+        resource_factor = 0.05 * R / (R0 + R);    % saturating, ~1 when R≈R0, ~0 when R→0
 
+        % Division, death, mutation propensities for each cell
+        a_div = zeros(N, 1);
+        % a_div(isE) = g_E * n_E * (1 + s(isE)) * logistic;
+        % a_div(isC) = g_C * n_C * (1 + s(isC)) * logistic;
+        a_div(isE) = r_growth * logistic + resource_factor;
+        a_div(isC) = r_growth * (1 + s(isC)) * logistic + resource_factor;
+
+
+        a_death = zeros(N, 1);
+        % a_death(isE) = d_E * n_E;
+        % a_death(isC) = d_C * n_C;
+        a_death(isE) = r_death * logistic;
+        a_death(isC) = r_death * logistic;
+
+        % TODO: LOOK AT THIS CAREFULLY !!!
+        a_mut = zeros(N, 1);
+        % a_mut(isC) = mu * n_E; % both of these get added to C
+        % a_mut(isC) = a_mut(isC) + mu * n_C;
+        a_mut(isE) = mu; % both of these get added to C
+        a_mut(isC) = mu;
+
+        a_i = a_div + a_death + a_mut;
         a0 = sum(a_i);
 
         if (a0 <= 0)
@@ -86,30 +112,34 @@ for rep = 1:num_reps
             break;
         end
 
-        % Pick mutation class
+        % Resource limitation
+        R = max(0, R - k_R * N * tau);   % continuous depletion
+
+        % Pick cell
         u2 = rand * a0;
         cumul = cumsum(a_i);
         idx = find(u2 < cumul, 1, 'first');
 
         % Pick which event (duplication, death, mutation)
         i = rand;
+        parentB = B(idx);
+        parentS = s(idx);
         if i < a_div(idx) / a_i(idx)
-            % Division event:
-            % 1. offspring is of same mutation class as parent
-            % 2. parent class fitness does not change
-            counts(idx) = counts(idx) + 1;
+            % Division event - offspring has same status (E/C) and fitness
+            % as parent
+            offB = parentB;
+            offS = parentS;
 
+            % Add offspring
+            B(end+1,1) = offB;
+            s(end+1,1) = offS;
         elseif i < (a_div(idx) + a_death(idx)) / a_i(idx)
             % Death event
-            counts(idx) = max(0, counts(idx) - 1);
-
+            B(idx,:) = [];
+            s(idx,:) = [];
         else
             % Mutation event
-            % 1. offspring is of a new mutation class
-            % 2. New mutation class fitness is changed by an amount dS
-
-            mutation_class = randi([2 n_mutation_classes]);
-
+            offB = 'C';
             % draw from DFE to get dS
             u = rand;
             if u < f_b
@@ -123,40 +153,64 @@ for rep = 1:num_reps
                 dS      = -gamrnd(k_del, theta_d);  % negative deleterious effect
             end
 
-            % Add offspring and update fitness
-            mean_s(mutation_class) = (mean_s(mutation_class) * counts(mutation_class) + dS) / (counts(mutation_class) + 1);
-            counts(mutation_class) = counts(mutation_class) + 1;
+            % TODO: cap fitness at 1?
+            offS = parentS + dS;
+
+            % Add offspring
+            B(end+1,1) = offB;
+            s(end+1,1) = offS;
         end
 
         % Record trajectory
         T_traj(end+1, 1) = t; %#ok<AGROW>
-        N_traj(end+1, 1) = sum(counts);
+        N_traj(end+1, 1) = numel(B);
+        K_eff_traj(end+1, 1) = K_eff;
+        s_traj(end+1, 1) = mean_s;
+        s_mut_traj(end+1, 1) = mean(s(B == 'C'));
+        s_reg_traj(end+1, 1) = mean(s(B == 'E'));
+
     end
 
-    all_traj{rep} = struct('t', T_traj, 'N', N_traj);
+    all_traj{rep} = struct('t', T_traj, 'N', N_traj, 'K_eff', K_eff_traj, 's', s_traj, 's_reg', s_reg_traj, 's_mut', s_mut_traj);
     
     fprintf("Rep %d completed in ", rep);
     toc
 
+    figure(1); scatter(rep, numel(B(isC)), 'filled') % DEBUG
 end
 
 %% Plot total population trajectories
-figure(1); hold on;
+% figure(2); hold on;
 % figure(3); hold on; % DEBUG: plot avg fitness v time
 % figure(4); hold on; % DEBUG: plot avg mutant fitness v time
-% figure(4); hold on; % DEBUG: plot avg eng fitness v time
 cols = lines(num_reps);
-
 for rep = 1:num_reps
     tr = all_traj{rep};
-    figure(1); plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3);
+    figure(2); hold on; plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3); title("Total population size")
+    text(tr.t(end),tr.N(end),sprintf("rep %d", rep),'Color', cols(rep,:));
+    figure(4); hold on; plot(tr.t, tr.K_eff, 'Color', cols(rep,:), 'LineWidth', 1.3);
+    title("Effective carrying capacity vs. time")
+    % figure(3); plot(tr.t, tr.s, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg fitness v time
+    % figure(4); plot(tr.t, tr.s_mut, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg mutant fitness v time
+    figure(5); subplot(ceil(num_reps/2), 2, rep); histogram(tr.s, 50, 'FaceColor', cols(rep,:)); title(sprintf("Histogram of fitness, rep %d", rep))
 end
-figure(1); 
-xlabel('Time (hours)');
-ylabel('Total population size');
-title('Cell count vs. time');
-grid on;
 
+figure(2); 
+param_str = sprintf("Parameters:\n" + ...
+    "r_{growth} = %f\n" + ...
+    "r_{death} = %f\n" + ...
+    "prob_{mutation} = %f\n\n" + ...
+    "DFE:\n" + ...
+    "f_b = %f\n" + ...
+    "f_n = %f\n" + ...
+    "f_d = %f", r_growth, r_death, mu, f_b, f_n, f_d);
+annotation('TextBox', [0.2, 0.5, 0.3, 0.4], 'String', param_str)
+
+% xlabel('Time (hours)');
+% ylabel('Total population size');
+% title('Cell count vs. time');
+% grid on;
+% 
 % figure(3); 
 % xlabel('Time (hours)');
 % ylabel('Average population fitness');
@@ -164,4 +218,3 @@ grid on;
 % grid on;
 % 
 % figure(4); title("Average mutant fitness")
-% figure(5); title("Average eng fitness")

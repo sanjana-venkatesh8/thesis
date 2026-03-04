@@ -7,7 +7,7 @@ K    = E0;      % tune as needed
 
 % Base division rates
 g_E  = 0.3;     % (h^-1) engineered (burdened)
-g_C  = 1.0;     % (h^-1) cheater (relieved burden, fitter)
+g_C  = 0.3;     % (h^-1) cheater (relieved burden, fitter)
 
 % Death rates
 d_E  = 0.02;    % (h^-1)
@@ -19,12 +19,12 @@ mu = 5e-5;
 
 % DFE parameters
 % Engineered: many beneficial mutations (loss of function / lower burden)
-f_b = 0.5;   f_n = 0.2;  f_d = 0.3;
+f_b = 0.7;   f_n = 0.3;  f_d = 0;
 lambda_b = 1.5;   % larger mean beneficial effect (1/lambda)
 lambda_d = 8;
 
 % RESOURCE LIMITATIONS
-R0   = 0.4;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
+R0   = 0.2;      % half-saturation constant for resource (this is in mol/L ? or some concentration constant)
 k_R  = 5e-6;     % resource use per cell per hour (tune)
 
 % TIME/REP PARAMETERS
@@ -168,31 +168,29 @@ for rep = 1:num_reps
 end
 
 %% Plot total population trajectories
-figure(2); hold on;
-figure(3); hold on; % DEBUG: plot avg fitness v time
-figure(4); hold on; % DEBUG: plot avg mutant fitness v time
-figure(6); hold on; % plot ln(pop. size) v time
+% figure(2); hold on;
+% figure(3); hold on; % DEBUG: plot avg fitness v time
+% figure(4); hold on; % DEBUG: plot avg mutant fitness v time
 cols = lines(num_reps);
 for rep = 1:num_reps
     tr = all_traj{rep};
-    figure(2); plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3);
-    figure(3); plot(tr.t, tr.s, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg fitness v time
-    figure(4); plot(tr.t, tr.s_mut, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg mutant fitness v time
-    figure(5); plot(tr.t, tr.s_reg, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg eng fitness v time
-    figure(6); plot(tr.t, log(tr.N), 'Color', cols(rep,:), 'LineWidth', 1.3);
+    figure(2); hold on; plot(tr.t, tr.N, 'Color', cols(rep,:), 'LineWidth', 1.3);
+    text(tr.t(end),tr.N(end),sprintf("rep %d", rep),'Color', cols(rep,:));
+    % figure(3); plot(tr.t, tr.s, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg fitness v time
+    % figure(4); plot(tr.t, tr.s_mut, 'Color', cols(rep,:), 'LineWidth', 1.3); % DEBUG: plot avg mutant fitness v time
+    figure(3); subplot(ceil(num_reps/2), 2, rep); histogram(tr.s, 50, 'FaceColor', cols(rep,:)); title(sprintf("Histogram of fitness, rep %d", rep))
 end
-figure(2); 
-xlabel('Time (hours)');
-ylabel('Total population size');
-title('Cell count vs. time');
-grid on;
 
-figure(3); 
-xlabel('Time (hours)');
-ylabel('Average population fitness');
-title('Average population fitness vs. time');
-grid on;
-
-figure(4); title("Average mutant fitness")
-figure(5); title("Average eng fitness")
-figure(6); title("ln(population size) vs. time")
+% figure(2); 
+% xlabel('Time (hours)');
+% ylabel('Total population size');
+% title('Cell count vs. time');
+% grid on;
+% 
+% figure(3); 
+% xlabel('Time (hours)');
+% ylabel('Average population fitness');
+% title('Average population fitness vs. time');
+% grid on;
+% 
+% figure(4); title("Average mutant fitness")
