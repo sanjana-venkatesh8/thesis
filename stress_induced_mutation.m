@@ -32,15 +32,25 @@
 % --> transient vs genetic mutator?
 % --> fitness modifier (logistic term) for hitchhiker/escape cells
 
+global light_exp_times light_exp_lengths;
+light_exp_times = [10, 30, 70];
+light_exp_lengths = [5, 10, 15];
+
 function dxdt = population_odes(t, x)
     %########## PARAMETERS ##########    
-    g_eng = 0.01; g_esc = 0.36;
+    g_eng = 0.01; g_esc = 0.36; g_wt = 0.5;
     d_wt = 0.0004; d_mut = 0.1; % h^-1
     eng2mut = @(t) e2m(t);    
     mut2hit = @(t) 5e-4 * one(t);
     hit2esc = @(t) 5e-2 * one(t);
 
-    P_max = 10000; % TODO: vary this with time (P_eff)
+    P_total = 10000;
+    P_eng_noLight = 1300;
+    P_eng_light = P_total;
+    P_mut = 3000;
+    P_hit = 8000;
+    P_esc = 8000;
+    space_const = 0.5;
     %################################
 
     eng = x(1); % engineered cells
@@ -48,18 +58,46 @@ function dxdt = population_odes(t, x)
     hit = x(3); % hitchhikers
     esc = x(4); % escaped cells
 
-    logistic = 1 - (eng+mut+hit+esc) / P_max;
+    % logistic = 1 - (eng+mut+hit+esc) / P_total;
 
-    dengdt = ((g_eng - d_wt) * eng - eng2mut(t) * eng) * logistic;
-    dmutdt = ((g_eng - d_mut) * mut + eng2mut(t) * eng - mut2hit(t) * mut) * logistic;
-    dhitdt = ((g_esc - d_mut) * hit + mut2hit(t) * mut - hit2esc(t) * hit) * logistic;
-    descdt = ((g_esc - d_wt) * esc + hit2esc(t) * hit) * logistic;
+    dengdt = ((g_eng - d_wt) * eng - eng2mut(t) * eng) * (1 - eng/P_eng_noLight) * (1 - light(t)) ... % dynamics in growth restriction
+           + ((g_wt - d_wt) * eng - eng2mut(t) * eng) * (1 - eng/P_eng_light) * light(t);  % dynamics in growth permission
+    dmutdt = ((g_eng - d_mut) * mut + eng2mut(t) * eng - mut2hit(t) * mut) * (1 - mut/P_mut);
+    dhitdt = ((g_esc - d_mut) * hit + mut2hit(t) * mut - hit2esc(t) * hit) * (1 - hit/P_hit);
+    descdt = ((g_esc - d_wt) * esc + hit2esc(t) * hit) * (1 - esc/P_esc);
 
     dxdt = [dengdt; dmutdt; dhitdt; descdt];
 end
 
+function y = light(t)
+    %########## PARAMETERS ##########
+    % light_exp_times = [10, 30, 70];
+    % light_exp_lengths = [5, 10, 15];
+    global light_exp_times light_exp_lengths;
+    %################################
+
+    y = 0;
+    for i = 1:length(light_exp_times)
+        y = y + heaviside(t - light_exp_times(i)) ...
+            - heaviside(t- (light_exp_times(i) + light_exp_lengths(i)));
+    end
+end
+
 function y = e2m(t)
-    y = spike(t - 40, 20);
+    %########## PARAMETERS ##########
+    delay = 3;
+    spike_length = 10;
+    global light_exp_times light_exp_lengths;
+    %################################ 
+    
+    spike_times = light_exp_times + light_exp_lengths + delay;
+    
+    y = 0;
+    for i = 1:length(spike_times)
+        y = y + spike(t-spike_times(i), spike_length);
+    end
+
+    % y = spike(t - 20, 20) + spike(t-75, 20);
     % y = 0.5 * spike(t, 10) + spike(t - 20, 20);
 end
 
@@ -92,39 +130,30 @@ eng0 = 1200; mut0 = 0; hit0 = 0; esc0 = 0;
 %########################################
 
 [t,y] = ode45(@population_odes,[0 200],[eng0; mut0; hit0; esc0]);
+colors = lines(4);
 
 figure;
 subplot(3,1,1); 
-yyaxis left; plot(t, y, LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
-title("Subpopulation size vs. time"); legend("Engineered", "Mutator", "Hitchhiker", "Escaped");
-
-subplot(3,1,2); 
 yyaxis left; plot(t, sum(y, 2), LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
+xregion(light_exp_times, light_exp_times+light_exp_lengths, FaceColor=[100/255, 225/255, 240/255], FaceAlpha=0.2);
 title("Total population size vs. time");
 
-subplot(3,1,3); fplot(@(t) e2m(t), [0 200])
-title("Rate of mutator formation vs time (e2m(t))");
+subplot(3,1,2); 
+yyaxis left; plot(t, y, LineWidth=2); colororder(colors);
+xregion(light_exp_times, light_exp_times+light_exp_lengths, FaceColor=[100/255, 225/255, 240/255], FaceAlpha=0.2);
+title("Subpopulation size vs. time"); legend("Engineered", "Mutator", "Hitchhiker", "Escaped");
+
+subplot(3,1,3);
+yyaxis left; fplot(@(t) e2m(t), [0 200], LineWidth=2, LineStyle='--', Color='r');
+xregion(light_exp_times, light_exp_times+light_exp_lengths, FaceColor=[100/255, 225/255, 240/255], FaceAlpha=0.2);
+title("Light exposure and rate of mutator formation vs time (e2m(t))");
 
 figure;
-subplot(2,2,1);
-yyaxis left; plot(t, y(:,1), LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
-title("Engineered");
-
-subplot(2,2,2); 
-yyaxis left; plot(t, y(:,2), LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
-title("Mutator");
-
-subplot(2,2,3); 
-yyaxis left; plot(t, y(:,3), LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
-title("Hitchhiker");
-
-subplot(2,2,4); 
-yyaxis left; plot(t, y(:,4), LineWidth=2);
-yyaxis right; fplot(@(t) e2m(t), [0 200]);
-title("Escaped");
-
+titles = ["Engineered", "Mutator", "Hitchhiker", "Cheater"];
+for i=1:4
+    subplot(2,2,i);
+    yyaxis left; plot(t, y(:,i), LineWidth=2);
+    yyaxis right; hold on; fplot(@(t) e2m(t), [0 200], LineStyle="--");
+    xregion(light_exp_times, light_exp_times+light_exp_lengths, FaceColor=[100/255, 225/255, 240/255], FaceAlpha=0.2);
+    title(titles(i))
+end
