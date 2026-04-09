@@ -17,13 +17,14 @@ k_delay = .01; %[done]
 r_max = 5e-3; r_min = 1e-6; %[done]
 P_max = 8e5; %[done]
 
-g_pdc1 = 3; r_cons = .2; R_p = 8; %[done]
-g_s = 2; d_s = 0.5; R_s = 10; % do with Sp Batch
-g_N = 0.28; d_N = 0.01; % do with ON/OFF
+g_pdc1 = .5; r_cons = .2; R_p = 80; %[done]
+g_s = .05; d_s = 0.01; R_s = 3; % do with Sp Batch
+g_N = 0.5; d_N = 0.01; % do with ON/OFF
 d_C = 0.05; %[done]
-g_c = 0.2; %[done]
-k_leak = 0.3; %[done]
-q_pdc = 0.1; q_N = 1e-5; q_M = 1000; % do with Sp Batch
+g_c = 0.15; %[done]
+k_leak = 1e-9; %[done]
+q_pdc = 1e-5; q_N = 1e-5; q_M = 1000; 
+% q_pdc = 0; q_N = 1e-5; q_M = 1000; % do with Sp Batch
 
 function dxdt = population_odes(t, x)
     %########## PARAMETERS ##########  
@@ -45,7 +46,7 @@ function dxdt = population_odes(t, x)
     mem = x(5);
     rm = x(6);
 
-    cell_logistic = (1 - (N + C)/P_max);
+    cell_logistic = 1;%(1 - (N + C)/P_max);
 
     dNdt = ((g_N) / (g_N*q_N*s + 1) * pdc1 - d_N * N) * cell_logistic;
     dsdt = (g_s - d_s) * N * (1 - s/(N * R_s));
@@ -126,7 +127,7 @@ N_0 = 0.01e6; C_0 = 0;
 mem0 = 0; rm0 = 1e-3;
 %########################################
 
-[t,y] = ode45(@population_odes,[0 180],[pdc1_0; s_0; N_0; C_0; mem0; rm0; rm0]);
+[t,y] = ode45(@population_odes,[0 480],[pdc1_0; s_0; N_0; C_0; mem0; rm0; rm0]);
 
 titles = ["PDC concentration vs time", "Chromatin binding protein concentration vs. time", "N cell population vs time", "Cheater population vs. time", "Total time in darkness vs. time", "Mutation rate vs. time", "Effective mutation rate vs. time"];
 figure(1); hold on;
@@ -150,12 +151,19 @@ ax.YAxis(1).Limits = [N_0 P_max]; % Set identical limits
 ax.YAxis(2).Limits = [0.01 7];
 
 %% PLOT EXP GROWTH TIME CONSTANT VS TIME (ln(N2) - ln(N1))/(t2 - t1)
-N = y(:, 3) + y(:, 4);
-mu = diff(log(N)) ./ diff(t);
+N = y(:, 3);
+C = y(:, 4);
+total = N + C;
+mu_N = diff(log(N)) ./ diff(t);
+mu_C = diff(log(C)) ./ diff(t);
+mu_total = diff(log(total)) ./ diff(t);
 t_mid = (t(1:end-1) + t(2:end)) / 2; % midpoints for plotting
 
 figure(3); hold on;
-plot(t_mid, mu, LineWidth=2);
+plot(t_mid, mu_total, LineWidth=2);
+plot(t_mid, mu_C, LineWidth=2, LineStyle='--', DisplayName="C");
+plot(t_mid, mu_N, LineWidth=2, LineStyle='--', DisplayName="N");
+ylim([0 0.5])
 xregion(light_exp_times, light_exp_times+light_exp_lengths, FaceColor=[100/255, 225/255, 240/255], FaceAlpha=0.2);
 xlabel('Time (h)');
 ylabel('\mu (h^{-1})');
